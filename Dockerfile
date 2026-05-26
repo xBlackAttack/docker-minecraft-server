@@ -1,4 +1,4 @@
-FROM didstopia/base:alpine-3.14
+FROM --platform=amd64 didstopia/base:alpine-3.23
 
 LABEL maintainer="Didstopia <support@didstopia.com>"
 
@@ -8,7 +8,7 @@ ENV PATH "${PATH}:/opt/jdk/bin"
 ENV LANG "C.UTF-8"
 
 # Minecraft server specific environment variables
-ENV MINECRAFT_SERVER_DOWNLOAD_URL "https://minecraft.net/en-us/download/server/"
+ENV MINECRAFT_SERVER_DOWNLOAD_URL "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 ENV MINECRAFT_SERVER_MEMORY_MIN "1G"
 ENV MINECRAFT_SERVER_MEMORY_MAX "1G"
 ENV MINECRAFT_SERVER_AGREE_EULA "true"
@@ -22,16 +22,19 @@ RUN apk --no-cache add \
     wget \
     ca-certificates \
     bash \
-    curl
+    curl \
+    jq
 
-# Install Java
-RUN apk --no-cache add -X http://dl-cdn.alpinelinux.org/alpine/edge/testing \
-    openjdk16-jre
+# Install Java (latest Minecraft needs Java 25, available in the 3.23 repos)
+RUN apk --no-cache add openjdk25-jre
 
-# Install the latest Minecraft server
-RUN set -x; export RANDVERSION=$(echo $((1 + $RANDOM % 4000))); wget --quiet --no-check-certificate \
-        "$(curl -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.$RANDVERSION.212 Safari/537.36" "$MINECRAFT_SERVER_DOWNLOAD_URL" | grep launcher.mojang | awk -F\" '{print $2}')" \
-        -O "/server.jar"
+# Install the latest Minecraft server, resolved through Mojang's version manifest
+RUN set -eux; \
+    MANIFEST="$(curl -sSL "$MINECRAFT_SERVER_DOWNLOAD_URL")"; \
+    RELEASE="$(echo "$MANIFEST" | jq -r '.latest.release')"; \
+    VERSION_URL="$(echo "$MANIFEST" | jq -r --arg v "$RELEASE" '.versions[] | select(.id==$v) | .url')"; \
+    SERVER_URL="$(curl -sSL "$VERSION_URL" | jq -r '.downloads.server.url')"; \
+    wget --quiet -O /server.jar "$SERVER_URL"
 RUN chmod a+rwx /server.jar
 
 # Copy the startup scripts (which also handles automatic updates)

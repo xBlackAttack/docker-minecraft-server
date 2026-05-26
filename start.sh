@@ -58,10 +58,12 @@ function checkForUpdates()
 {
   echo "Checking for updates.."
 
-  # Download the latest server
-  RANDVERSION=$(echo $((1 + $RANDOM % 4000)))
-  LATEST_SERVER_URL=$(curl -sL "$MINECRAFT_SERVER_DOWNLOAD_URL" -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.$RANDVERSION.212 Safari/537.36" | grep launcher.mojang | awk -F\" '{print $2}')
-  wget --quiet --no-check-certificate "${LATEST_SERVER_URL}" -O "/tmp/server_latest.jar" > /dev/null
+  # Download the latest server, resolved through Mojang's version manifest
+  MANIFEST=$(curl -sSL "$MINECRAFT_SERVER_DOWNLOAD_URL")
+  LATEST_RELEASE=$(echo "$MANIFEST" | jq -r '.latest.release')
+  VERSION_URL=$(echo "$MANIFEST" | jq -r --arg v "$LATEST_RELEASE" '.versions[] | select(.id==$v) | .url')
+  LATEST_SERVER_URL=$(curl -sSL "$VERSION_URL" | jq -r '.downloads.server.url')
+  wget --quiet "${LATEST_SERVER_URL}" -O "/tmp/server_latest.jar" > /dev/null
 
   # Make sure the current server path always exists
   if [ ! -f "/app/server.jar" ]; then
